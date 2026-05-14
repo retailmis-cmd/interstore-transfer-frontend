@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { BrowserMultiFormatReader } from '@zxing/browser';
-import { IScannerControls } from '@zxing/browser';
-import { X, Camera, ZapOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Camera, ZapOff, RefreshCw } from 'lucide-react';
 
 interface CameraScannerProps {
   onScan: (barcode: string) => void;
@@ -12,86 +10,95 @@ interface CameraScannerProps {
 
 export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const lastScannedRef = useRef<string>('');
-  const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTextRef = useRef('');
+  const lastTimeRef = useRef(0);
 
   const [error, setError] = useState('');
-  const [flashColor, setFlashColor] = useState<'green' | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<string | undefined>(undefined);
+  const [flash, setFlash] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [hasFlip, setHasFlip] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
-  const startScanner = useCallback(async (deviceId?: string) => {
-    if (!videoRef.current) return;
-    // Stop any existing scanner
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-
-    try {
-      const reader = new BrowserMultiFormatReader();
-      const controls = await reader.decodeFromVideoDevice(
-        deviceId ?? undefined,
-        videoRef.current,
-        (result, err) => {
-          if (result) {
-            const text = result.getText();
-            // Cooldown: ignore same barcode scanned within 1.5 seconds
-            if (text === lastScannedRef.current) return;
-            lastScannedRef.current = text;
-            if (cooldownRef.current) clearTimeout(cooldownRef.current);
-            cooldownRef.current = setTimeout(() => {
-              lastScannedRef.current = '';
-            }, 1500);
-
-            // Visual + haptic feedback
-            setFlashColor('green');
-            setTimeout(() => setFlashColor(null), 400);
-            if (navigator.vibrate) navigator.vibrate(80);
-
-            onScan(text);
-          }
-        }
-      );
-      controlsRef.current = controls;
-    } catch {
-      setError('Camera access denied. Please allow camera permission and try again.');
-    }
-  }, [onScan]);
-
-  // Load available cameras
   useEffect(() => {
-    BrowserMultiFormatReader.listVideoInputDevices()
-      .then((devs) => {
-        setDevices(devs);
-        // Prefer back camera on mobile
-        const back = devs.find(
-          (d) => /back|rear|environment/i.test(d.label)
-        );
-        const chosen = back?.deviceId ?? devs[0]?.deviceId;
-        setSelectedDevice(chosen);
-      })
-      .catch(() => {
-        setError('Unable to access camera. Please check permissions.');
-      });
-  }, []);
+    let alive = true;
 
-  // Start scanner once a device is selected
-  useEffect(() => {
-    if (selectedDevice !== undefined) {
-      startScanner(selectedDevice);
-    }
-    return () => {
-      controlsRef.current?.stop();
-      if (cooldownRef.current) clearTimeout(cooldownRef.current);
+    const stopAll = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     };
-  }, [selectedDevice, startScanner]);
 
-  const switchCamera = () => {
-    if (devices.length < 2) return;
-    const currentIdx = devices.findIndex((d) => d.deviceId === selectedDevice);
-    const nextIdx = (currentIdx + 1) % devices.length;
-    setSelectedDevice(devices[nextIdx].deviceId);
-  };
+    const run = async () => {
+      stopAll();
+      setError('');
+      setReady(false);
+
+      try {
+        // 1. Request camera directly — no device enumeration before permission
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+        });
+
+        if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = stream;
+
+        const video = videoRef.current!;
+        video.srcObject = stream;
+        await new Promise<void>((res) => { video.onloadedmetadata = () => res(); });
+        await video.play();
+        if (!alive) return;
+
+        setReady(true);
+
+        // 2. After permission is granted, enumerate cameras for flip button
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        if (alive) setHasFlip(devs.filter((d) => d.kind === 'videoinput').length > 1);
+
+        // 3. Dynamically import ZXing (avoids SSR bundle issues)
+        const { BrowserMultiFormatReader } = await import('@zxing/library');
+        const reader = new BrowserMultiFormatReader();
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d')!;
+
+        // 4. Poll frames every 300 ms and decode via canvas
+        const scan = () => {
+          if (!alive) return;
+          if (video.readyState >= 2 && video.videoWidth > 0) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            try {
+              const result = reader.decodeFromCanvas(canvas);
+              if (result) {
+                const text = result.getText();
+                const now = Date.now();
+                // 1.5 s cooldown to prevent double-scans
+                if (text !== lastTextRef.current || now - lastTimeRef.current > 1500) {
+                  lastTextRef.current = text;
+                  lastTimeRef.current = now;
+                  if (alive) {
+                    setFlash(true);
+                    setTimeout(() => setFlash(false), 300);
+                    navigator.vibrate?.(80);
+                    onScan(text);
+                  }
+                }
+              }
+            } catch { /* no barcode in frame – ignore */ }
+          }
+          timerRef.current = setTimeout(scan, 300);
+        };
+        scan();
+      } catch {
+        if (alive) setError('Camera access denied. Please allow camera permission and try again.');
+      }
+    };
+
+    run();
+    return () => { alive = false; if (timerRef.current) clearTimeout(timerRef.current); streamRef.current?.getTracks().forEach((t) => t.stop()); };
+  }, [facingMode, onScan]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -103,18 +110,15 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
             <h3 className="font-semibold text-slate-800">Camera Scanner</h3>
           </div>
           <div className="flex items-center gap-2">
-            {devices.length > 1 && (
+            {hasFlip && (
               <button
-                onClick={switchCamera}
-                className="text-xs text-brand-600 border border-brand-200 rounded-lg px-2.5 py-1 hover:bg-brand-50 transition-colors"
+                onClick={() => setFacingMode((f) => (f === 'environment' ? 'user' : 'environment'))}
+                className="text-xs text-brand-600 border border-brand-200 rounded-lg px-2.5 py-1 hover:bg-brand-50 transition-colors flex items-center gap-1"
               >
-                Flip Camera
+                <RefreshCw className="w-3 h-3" /> Flip
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-            >
+            <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
               <X className="w-4 h-4 text-slate-500" />
             </button>
           </div>
@@ -126,47 +130,39 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
             <ZapOff className="w-10 h-10 text-slate-300" />
             <p className="text-sm text-red-600">{error}</p>
             <button
-              onClick={() => { setError(''); startScanner(selectedDevice); }}
+              onClick={() => setFacingMode((f) => f)}
               className="btn-primary text-sm px-4 py-2"
             >
               Retry
             </button>
           </div>
         ) : (
-          <div className="relative bg-black aspect-[4/3]">
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              muted
-              playsInline
-            />
+          <div className={`relative bg-black aspect-[4/3] ${flash ? 'ring-4 ring-inset ring-green-400' : ''}`}>
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
 
-            {/* Scan overlay */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              {/* Dim corners */}
-              <div className="absolute inset-0 bg-black/40" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 30%, 15% 30%, 15% 70%, 85% 70%, 85% 30%, 0% 30%)' }} />
-
-              {/* Scan box */}
-              <div
-                className={`w-64 h-28 rounded-lg relative transition-all duration-200 ${
-                  flashColor === 'green' ? 'ring-4 ring-green-400' : ''
-                }`}
-              >
-                {/* Corners */}
-                <span className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-brand-400 rounded-tl" />
-                <span className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-brand-400 rounded-tr" />
-                <span className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-brand-400 rounded-bl" />
-                <span className="absolute bottom-0 right-0 w-6 h-6 border-b-[3px] border-r-[3px] border-brand-400 rounded-br" />
-
-                {/* Scan line animation */}
-                <div className="absolute inset-x-2 top-1/2 h-px bg-brand-400 opacity-80 animate-pulse" />
+            {/* Scan overlay — only show once video is playing */}
+            {ready && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-64 h-28 relative">
+                  <span className="absolute top-0 left-0 w-6 h-6 border-t-[3px] border-l-[3px] border-brand-400 rounded-tl" />
+                  <span className="absolute top-0 right-0 w-6 h-6 border-t-[3px] border-r-[3px] border-brand-400 rounded-tr" />
+                  <span className="absolute bottom-0 left-0 w-6 h-6 border-b-[3px] border-l-[3px] border-brand-400 rounded-bl" />
+                  <span className="absolute bottom-0 right-0 w-6 h-6 border-b-[3px] border-r-[3px] border-brand-400 rounded-br" />
+                  <div className="absolute inset-x-2 top-1/2 h-px bg-brand-400 opacity-80 animate-pulse" />
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Spinner while camera is starting */}
+            {!ready && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              </div>
+            )}
           </div>
         )}
 
-        {/* Footer hint */}
+        {/* Footer */}
         <div className="px-5 py-3 text-center bg-slate-50">
           <p className="text-sm font-medium text-slate-700">Aim at the barcode</p>
           <p className="text-xs text-slate-400 mt-0.5">Item is added automatically on each scan</p>
