@@ -39,8 +39,8 @@ export default function Navbar() {
               <Store className="w-5 h-5 text-white" />
             </div>
             <div className="hidden sm:block">
-              <p className="text-white font-bold text-sm leading-tight">BANANA CLUB</p>
-              <p className="text-brand-300 text-xs leading-tight">Inter Store Transfer</p>
+              <p className="text-white font-bold text-sm leading-tight">Inter-Store Transfer</p>
+              <p className="text-brand-300 text-xs leading-tight">Banana Club VV Puram</p>
             </div>
           </div>
 

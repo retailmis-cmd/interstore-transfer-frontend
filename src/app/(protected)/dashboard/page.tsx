@@ -40,7 +40,7 @@ export default function DashboardPage() {
           Welcome back, <span className="text-brand-600">{user?.username}</span>
         </h1>
         <p className="text-slate-500 text-sm mt-1">
-          {format(new Date(), "EEEE, MMMM d, yyyy")} · Banana Club VV Puram
+          {format(new Date(), "EEEE, MMMM d, yyyy")} · Inter-Store Transfer App
         </p>
       </div>
 

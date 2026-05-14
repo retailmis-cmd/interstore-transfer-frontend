@@ -169,9 +169,9 @@ export default function TransferPage() {
           <div className="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center">
             <ArrowRightLeft className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">New Inter Store Transfer</h1>
+          <h1 className="text-2xl font-bold text-slate-800">New Inter-Store Transfer</h1>
         </div>
-        <p className="text-slate-500 text-sm ml-12">Scan garment barcodes to record stock movement between stores</p>
+        <p className="text-slate-500 text-sm ml-12">Scan barcodes to record stock movement between stores</p>
       </div>
 
       {/* Alert */}

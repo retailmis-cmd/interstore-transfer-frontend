@@ -2,7 +2,7 @@
   "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js",
   "/(protected)/admin/page": "app/(protected)/admin/page.js",
+  "/(protected)/reports/page": "app/(protected)/reports/page.js",
   "/(protected)/transfer/page": "app/(protected)/transfer/page.js",
-  "/(protected)/dashboard/page": "app/(protected)/dashboard/page.js",
-  "/(protected)/reports/page": "app/(protected)/reports/page.js"
+  "/(protected)/dashboard/page": "app/(protected)/dashboard/page.js"
 }

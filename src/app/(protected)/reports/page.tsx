@@ -118,7 +118,7 @@ export default function ReportsPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Transfer Reports</h1>
-          <p className="text-slate-500 text-sm">View and export stock transfer history</p>
+          <p className="text-slate-500 text-sm">View and export inter-store transfer history</p>
         </div>
       </div>
 

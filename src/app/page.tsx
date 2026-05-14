@@ -58,8 +58,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-500 rounded-2xl shadow-xl mb-4">
             <Store className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Banana Club</h1>
-          <p className="text-brand-300 text-sm mt-1">Inter Store Transfer System</p>
+          <h1 className="text-2xl font-bold text-white">Inter-Store Transfer App</h1>
+          <p className="text-brand-300 text-sm mt-1">Banana Club VV Puram</p>
         </div>
 
         {/* Card */}

@@ -3,8 +3,8 @@ import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 
 export const metadata: Metadata = {
-  title: 'Banana Club — Inter Store Transfer',
-  description: 'Manage inter-store stock transfers between Banana Club outlets',
+  title: 'Inter-Store Transfer App',
+  description: 'Manage inter-store stock transfers between Banana Club VV Puram outlets',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
