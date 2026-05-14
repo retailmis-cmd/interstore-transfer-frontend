@@ -2,13 +2,13 @@
   "app\\(protected)\\transfer\\page.tsx -> @/components/CameraScanner": {
     "id": 421,
     "files": [
-      "static/chunks/421.4657f9386660d397.js"
+      "static/chunks/421.62a78e0904703821.js"
     ]
   },
-  "components\\CameraScanner.tsx -> @zxing/browser": {
-    "id": 858,
+  "components\\CameraScanner.tsx -> @zxing/library": {
+    "id": 5057,
     "files": [
-      "static/chunks/858.17c11d7b3b4fab0a.js"
+      "static/chunks/57.a82ff47bb6d39a0f.js"
     ]
   }
 }

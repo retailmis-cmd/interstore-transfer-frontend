@@ -10,8 +10,9 @@ interface CameraScannerProps {
 
 export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const controlsRef = useRef<{ stop: () => void } | null>(null);
   const lastTextRef = useRef('');
   const lastTimeRef = useRef(0);
 
@@ -24,47 +25,75 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   useEffect(() => {
     let alive = true;
 
+    const stop = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+
     const run = async () => {
+      stop();
       setError('');
       setReady(false);
 
       try {
-        // Step 1: Start camera with facingMode constraint via getUserMedia
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode } },
+          video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
-
         streamRef.current = stream;
+
         const video = videoRef.current!;
         video.srcObject = stream;
+        video.setAttribute('playsinline', 'true');
         await video.play();
         if (!alive) return;
 
         setReady(true);
 
-        // Step 2: decodeFromVideoElement reads frames from the already-playing video
-        const { BrowserMultiFormatReader } = await import('@zxing/browser');
-        const reader = new BrowserMultiFormatReader();
-        const controls = await reader.decodeFromVideoElement(video, (result) => {
-          if (!result || !alive) return;
-          const text = result.getText();
-          const now = Date.now();
-          if (text === lastTextRef.current && now - lastTimeRef.current < 1500) return;
-          lastTextRef.current = text;
-          lastTimeRef.current = now;
-          setFlash(true);
-          setTimeout(() => setFlash(false), 300);
-          navigator.vibrate?.(80);
-          onScan(text);
-        });
-
-        if (!alive) { controls.stop(); return; }
-        controlsRef.current = controls;
-
-        // Step 3: Enumerate cameras for flip button (only populated after permission)
+        // Enumerate cameras for flip button after permission is granted
         const devs = await navigator.mediaDevices.enumerateDevices();
         if (alive) setHasFlip(devs.filter((d) => d.kind === 'videoinput').length > 1);
+
+        // Dynamically import the low-level ZXing library
+        const { MultiFormatReader, BinaryBitmap, HTMLCanvasElementLuminanceSource, HybridBinarizer } =
+          await import('@zxing/library');
+
+        const reader = new MultiFormatReader();
+        const canvas = canvasRef.current!;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+
+        // Decode loop using requestAnimationFrame
+        const tick = () => {
+          if (!alive) return;
+          if (video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            try {
+              const luminance = new HTMLCanvasElementLuminanceSource(canvas);
+              const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminance));
+              const result = reader.decode(binaryBitmap);
+              if (result) {
+                const text = result.getText();
+                const now = Date.now();
+                if (text !== lastTextRef.current || now - lastTimeRef.current > 1500) {
+                  lastTextRef.current = text;
+                  lastTimeRef.current = now;
+                  setFlash(true);
+                  setTimeout(() => setFlash(false), 300);
+                  navigator.vibrate?.(80);
+                  onScan(text);
+                }
+              }
+            } catch {
+              // No barcode in this frame — normal, keep looping
+            }
+          }
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
       } catch {
         if (alive) setError('Camera access denied. Please allow camera permission and try again.');
       }
@@ -74,10 +103,7 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
 
     return () => {
       alive = false;
-      controlsRef.current?.stop();
-      controlsRef.current = null;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+      stop();
     };
   }, [facingMode, onScan]);
 
@@ -120,6 +146,7 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
         ) : (
           <div className={`relative bg-black aspect-[4/3] ${flash ? 'ring-4 ring-inset ring-green-400' : ''}`}>
             <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            <canvas ref={canvasRef} className="hidden" />
 
             {/* Scan overlay — only show once video is playing */}
             {ready && (
