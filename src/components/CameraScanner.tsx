@@ -11,7 +11,7 @@ interface CameraScannerProps {
 export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsRef = useRef<{ stop: () => void } | null>(null);
   const lastTextRef = useRef('');
   const lastTimeRef = useRef(0);
 
@@ -24,80 +24,61 @@ export default function CameraScanner({ onScan, onClose }: CameraScannerProps) {
   useEffect(() => {
     let alive = true;
 
-    const stopAll = () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    };
-
     const run = async () => {
-      stopAll();
       setError('');
       setReady(false);
 
       try {
-        // 1. Request camera directly — no device enumeration before permission
+        // Step 1: Start camera with facingMode constraint via getUserMedia
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: facingMode } },
         });
-
         if (!alive) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
 
+        streamRef.current = stream;
         const video = videoRef.current!;
         video.srcObject = stream;
-        await new Promise<void>((res) => { video.onloadedmetadata = () => res(); });
         await video.play();
         if (!alive) return;
 
         setReady(true);
 
-        // 2. After permission is granted, enumerate cameras for flip button
+        // Step 2: decodeFromVideoElement reads frames from the already-playing video
+        const { BrowserMultiFormatReader } = await import('@zxing/browser');
+        const reader = new BrowserMultiFormatReader();
+        const controls = await reader.decodeFromVideoElement(video, (result) => {
+          if (!result || !alive) return;
+          const text = result.getText();
+          const now = Date.now();
+          if (text === lastTextRef.current && now - lastTimeRef.current < 1500) return;
+          lastTextRef.current = text;
+          lastTimeRef.current = now;
+          setFlash(true);
+          setTimeout(() => setFlash(false), 300);
+          navigator.vibrate?.(80);
+          onScan(text);
+        });
+
+        if (!alive) { controls.stop(); return; }
+        controlsRef.current = controls;
+
+        // Step 3: Enumerate cameras for flip button (only populated after permission)
         const devs = await navigator.mediaDevices.enumerateDevices();
         if (alive) setHasFlip(devs.filter((d) => d.kind === 'videoinput').length > 1);
-
-        // 3. Dynamically import ZXing (avoids SSR bundle issues)
-        const { BrowserMultiFormatReader } = await import('@zxing/library');
-        const reader = new BrowserMultiFormatReader();
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d')!;
-
-        // 4. Poll frames every 300 ms and decode via canvas
-        const scan = () => {
-          if (!alive) return;
-          if (video.readyState >= 2 && video.videoWidth > 0) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            try {
-              const result = reader.decodeFromCanvas(canvas);
-              if (result) {
-                const text = result.getText();
-                const now = Date.now();
-                // 1.5 s cooldown to prevent double-scans
-                if (text !== lastTextRef.current || now - lastTimeRef.current > 1500) {
-                  lastTextRef.current = text;
-                  lastTimeRef.current = now;
-                  if (alive) {
-                    setFlash(true);
-                    setTimeout(() => setFlash(false), 300);
-                    navigator.vibrate?.(80);
-                    onScan(text);
-                  }
-                }
-              }
-            } catch { /* no barcode in frame – ignore */ }
-          }
-          timerRef.current = setTimeout(scan, 300);
-        };
-        scan();
       } catch {
         if (alive) setError('Camera access denied. Please allow camera permission and try again.');
       }
     };
 
     run();
-    return () => { alive = false; if (timerRef.current) clearTimeout(timerRef.current); streamRef.current?.getTracks().forEach((t) => t.stop()); };
+
+    return () => {
+      alive = false;
+      controlsRef.current?.stop();
+      controlsRef.current = null;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
   }, [facingMode, onScan]);
 
   return (

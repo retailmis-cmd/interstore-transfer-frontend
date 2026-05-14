@@ -1,0 +1,14 @@
+{
+  "app\\(protected)\\transfer\\page.tsx -> @/components/CameraScanner": {
+    "id": 421,
+    "files": [
+      "static/chunks/421.4657f9386660d397.js"
+    ]
+  },
+  "components\\CameraScanner.tsx -> @zxing/browser": {
+    "id": 858,
+    "files": [
+      "static/chunks/858.17c11d7b3b4fab0a.js"
+    ]
+  }
+}
