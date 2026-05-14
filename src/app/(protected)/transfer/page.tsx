@@ -4,11 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Scan, Plus, Minus, Trash2, CheckCircle, AlertCircle, ArrowRightLeft,
-  RefreshCw, Save, X
+  RefreshCw, Save, X, Camera
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { getNextTransactionNumber, createTransfer } from '@/lib/api';
 import { STORES, TransferItem } from '@/types';
+import dynamic from 'next/dynamic';
+
+const CameraScanner = dynamic(() => import('@/components/CameraScanner'), { ssr: false });
 import { format } from 'date-fns';
 
 export default function TransferPage() {
@@ -27,6 +30,7 @@ export default function TransferPage() {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loadingNumber, setLoadingNumber] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
 
@@ -74,6 +78,10 @@ export default function TransferPage() {
     setBarcodeInput('');
     barcodeRef.current?.focus();
   };
+
+  const handleCameraScan = useCallback((barcode: string) => {
+    processBarcode(barcode);
+  }, [processBarcode]);
 
   const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -146,6 +154,15 @@ export default function TransferPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {cameraOpen && (
+        <CameraScanner
+          onScan={handleCameraScan}
+          onClose={() => {
+            setCameraOpen(false);
+            setTimeout(() => barcodeRef.current?.focus(), 100);
+          }}
+        />
+      )}
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
@@ -270,6 +287,15 @@ export default function TransferPage() {
             >
               <Plus className="w-4 h-4" />
               Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              className="btn-secondary px-4 flex items-center gap-2"
+              title="Scan with camera"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="hidden sm:inline">Camera</span>
             </button>
           </div>
           <p className="text-xs text-slate-400 mt-2">
