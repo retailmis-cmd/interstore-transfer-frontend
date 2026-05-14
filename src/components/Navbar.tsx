@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import {
   ArrowRightLeft,
   BarChart2,
   LayoutDashboard,
   LogOut,
   Settings,
-  Store,
   ChevronDown,
   Menu,
   X,
@@ -35,13 +35,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-brand-500 rounded-lg flex items-center justify-center shadow-inner">
-              <Store className="w-5 h-5 text-white" />
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-white font-bold text-sm leading-tight">Inter-Store Transfer</p>
-              <p className="text-brand-300 text-xs leading-tight">Banana Club VV Puram</p>
-            </div>
+            <Image src="/logo.png" alt="Banana Club" width={120} height={36} className="h-9 w-auto object-contain" priority />
           </div>
 
           {/* Desktop nav */}

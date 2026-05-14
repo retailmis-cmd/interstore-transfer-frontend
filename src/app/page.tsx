@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Store, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
+import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { login } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -55,8 +56,8 @@ export default function LoginPage() {
       <div className="relative w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-500 rounded-2xl shadow-xl mb-4">
-            <Store className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <Image src="/logo.png" alt="Banana Club" width={180} height={54} className="h-14 w-auto object-contain" priority />
           </div>
           <h1 className="text-2xl font-bold text-white">Inter-Store Transfer App</h1>
           <p className="text-brand-300 text-sm mt-1">Banana Club VV Puram</p>
