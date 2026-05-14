@@ -137,3 +137,54 @@ export function downloadCSV(rows: ReportRow[], from: string, to: string) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Excel download utility
+export async function downloadExcel(rows: ReportRow[], from: string, to: string) {
+  const { utils, writeFile } = await import('xlsx');
+
+  // Sheet 1: Flat detail rows
+  const detailData = rows.map((r) => ({
+    'Transaction Number': r.transaction_number,
+    'From Store': r.from_store,
+    'To Store': r.to_store,
+    'Transfer Date': new Date(r.transfer_date).toLocaleString('en-IN'),
+    'Barcode': r.barcode ?? '',
+    'Quantity': r.quantity ?? 0,
+    'Created By': r.created_by,
+    'Status': r.status,
+  }));
+
+  // Sheet 2: Summary grouped by transaction
+  const summaryMap = new Map<string, { 'Transaction Number': string; 'From Store': string; 'To Store': string; 'Transfer Date': string; 'Total SKUs': number; 'Total Qty': number; 'Created By': string }>();
+  for (const r of rows) {
+    if (!summaryMap.has(r.transaction_number)) {
+      summaryMap.set(r.transaction_number, {
+        'Transaction Number': r.transaction_number,
+        'From Store': r.from_store,
+        'To Store': r.to_store,
+        'Transfer Date': new Date(r.transfer_date).toLocaleString('en-IN'),
+        'Total SKUs': 0,
+        'Total Qty': 0,
+        'Created By': r.created_by,
+      });
+    }
+    const entry = summaryMap.get(r.transaction_number)!;
+    if (r.barcode) {
+      entry['Total SKUs'] += 1;
+      entry['Total Qty'] += r.quantity ?? 0;
+    }
+  }
+
+  const wb = utils.book_new();
+  const wsSummary = utils.json_to_sheet(Array.from(summaryMap.values()));
+  const wsDetail = utils.json_to_sheet(detailData);
+
+  // Column widths
+  wsSummary['!cols'] = [{ wch: 22 }, { wch: 30 }, { wch: 30 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 16 }];
+  wsDetail['!cols'] = [{ wch: 22 }, { wch: 30 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 10 }, { wch: 16 }, { wch: 12 }];
+
+  utils.book_append_sheet(wb, wsSummary, 'Summary');
+  utils.book_append_sheet(wb, wsDetail, 'Detail');
+
+  writeFile(wb, `transfer-report-${from}-to-${to}.xlsx`);
+}

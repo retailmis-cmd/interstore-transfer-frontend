@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp, PackageOpen
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { getReport, downloadCSV } from '@/lib/api';
+import { getReport, downloadCSV, downloadExcel } from '@/lib/api';
 import { ReportRow } from '@/types';
 import { format, subDays } from 'date-fns';
 
@@ -151,13 +151,22 @@ export default function ReportsPage() {
             {loading ? 'Loading…' : 'Apply Filter'}
           </button>
           {fetched && rows.length > 0 && (
-            <button
-              onClick={() => downloadCSV(rows, fromDate, toDate)}
-              className="btn-secondary h-[42px] px-5"
-            >
-              <Download className="w-4 h-4" />
-              Download CSV
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => downloadCSV(rows, fromDate, toDate)}
+                className="btn-secondary h-[42px] px-5"
+              >
+                <Download className="w-4 h-4" />
+                CSV
+              </button>
+              <button
+                onClick={() => downloadExcel(rows, fromDate, toDate)}
+                className="h-[42px] px-5 flex items-center gap-2 rounded-lg border border-green-600 bg-green-600 text-white text-sm font-medium hover:bg-green-700 hover:border-green-700 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Excel
+              </button>
+            </div>
           )}
         </div>
 
