@@ -3,14 +3,15 @@
 import { useState } from 'react';
 import {
   BarChart2, Download, Filter, Calendar, AlertCircle, FileText,
-  ChevronDown, ChevronUp, PackageOpen
+  ChevronDown, ChevronUp, PackageOpen, Trash2
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { getReport, downloadCSV, downloadExcel } from '@/lib/api';
+import { getReport, downloadCSV, downloadExcel, deleteTransfer } from '@/lib/api';
 import { ReportRow } from '@/types';
 import { format, subDays } from 'date-fns';
 
 interface GroupedTransfer {
+  id: number;
   transaction_number: string;
   from_store: string;
   to_store: string;
@@ -26,6 +27,7 @@ function groupRows(rows: ReportRow[]): GroupedTransfer[] {
   for (const row of rows) {
     if (!map.has(row.transaction_number)) {
       map.set(row.transaction_number, {
+        id: row.id,
         transaction_number: row.transaction_number,
         from_store: row.from_store,
         to_store: row.to_store,
@@ -48,7 +50,7 @@ function groupRows(rows: ReportRow[]): GroupedTransfer[] {
 const storeShort = (s: string) => (s.includes('SQUARE') ? 'BC Square' : 'BC Plus');
 
 export default function ReportsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [fromDate, setFromDate] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
   const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -58,6 +60,7 @@ export default function ReportsPage() {
   const [fetched, setFetched] = useState(false);
   const [error, setError] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const fetchReport = async () => {
     if (!token) return;
@@ -89,6 +92,22 @@ export default function ReportsPage() {
   };
 
   const totalQty = rows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+
+  const handleDelete = async (t: GroupedTransfer) => {
+    if (!confirm(`Delete transfer ${t.transaction_number}? This cannot be undone.`)) return;
+    setDeletingId(t.id);
+    try {
+      await deleteTransfer(token!, t.id);
+      const newRows = rows.filter((r) => r.transaction_number !== t.transaction_number);
+      setRows(newRows);
+      setGrouped(groupRows(newRows));
+      setExpandedRows((prev) => { const n = new Set(prev); n.delete(t.transaction_number); return n; });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete transfer.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -224,6 +243,9 @@ export default function ReportsPage() {
                     <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">SKUs</th>
                     <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide text-center">Total Qty</th>
                     <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">By</th>
+                    {user?.role === 'admin' && (
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-12" />
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -256,10 +278,29 @@ export default function ReportsPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-slate-500">{t.created_by || '—'}</td>
+                        {user?.role === 'admin' && (
+                          <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleDelete(t)}
+                              disabled={deletingId === t.id}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors ml-auto disabled:opacity-40"
+                              title="Delete transfer"
+                            >
+                              {deletingId === t.id ? (
+                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                       {expandedRows.has(t.transaction_number) && (
                         <tr key={`${t.transaction_number}-items`} className="bg-brand-50/50">
-                          <td colSpan={8} className="px-8 py-3">
+                          <td colSpan={user?.role === 'admin' ? 9 : 8} className="px-8 py-3">
                             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
                               Item Details
                             </div>

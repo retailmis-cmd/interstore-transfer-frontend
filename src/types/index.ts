@@ -40,6 +40,7 @@ export interface TransferListResponse {
 }
 
 export interface ReportRow {
+  id: number;
   transaction_number: string;
   from_store: string;
   to_store: string;

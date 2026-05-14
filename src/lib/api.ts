@@ -54,6 +54,7 @@ export const deleteUser = (token: string, id: number) =>
   request<{ message: string }>(`/api/users/${id}`, 'DELETE', undefined, token);
 
 // Transfers
+
 export const getNextTransactionNumber = (token: string) =>
   request<{ transaction_number: string }>('/api/transfers/next-number', 'GET', undefined, token);
 
@@ -86,6 +87,9 @@ export const getReport = (token: string, from: string, to: string) =>
     undefined,
     token
   );
+
+export const deleteTransfer = (token: string, id: number) =>
+  request<{ message: string }>(`/api/transfers/${id}`, 'DELETE', undefined, token);
 
 // CSV download utility
 export function downloadCSV(rows: ReportRow[], from: string, to: string) {
